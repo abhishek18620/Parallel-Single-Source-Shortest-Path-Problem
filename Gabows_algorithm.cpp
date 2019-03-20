@@ -1,7 +1,7 @@
 /**
  * @file Gabows_algorithm.cpp
  *
- * @brief
+ * @brief Sequential version of Gabow's algorithm for SSSP
  *
  * @author Abhishek Rawat (abhishek18620@gmail.com)
  */
@@ -20,7 +20,6 @@
 using ::std::string;
 using ::std::vector;
 
-void
 int main() {
   /**
     Code goes here
