@@ -1,3 +1,4 @@
+// g++ -pthread -std=c++14 -o gabow.out gabow.cpp -D LOCAL_DEFINE
 /**
  * @file gabow.cpp
  *
@@ -10,30 +11,50 @@
  * sys includes
  * */
 #include <cmath>
+#include <chrono>
 #include <iostream>
 #include <queue>
 #include <string>
 #include <vector>
-
+#include <thread>
 /*
  * my includes
  * */
 
 /** namespaces **/
-using ::std::log2;
 using ::std::make_pair;
-using ::std::max;
 using ::std::pair;
+using ::std::thread;
+using ::std::max;
 using ::std::priority_queue;
+using ::std::queue;
 using ::std::string;
 using ::std::vector;
+using ::std::ref;
+using ::std::chrono::steady_clock;
+using ::std::chrono::milliseconds;
+using ::std::chrono::duration_cast;
+
+#define trace2(x, y)                                                           \
+  std::cerr << #x << ": " << x << " | " << #y << ": " << y << ::std::endl;
+#define trace3(x, y, z)                                                        \
+  std::cerr << #x << ": " << x << " | " << #y << ": " << y << " | " << #z      \
+            << ": " << z << ::std::endl;
+#define trace4(a, b, c, d)                                                     \
+  std::cerr << #a << ": " << a << " | " << #b << ": " << b << " | " << #c      \
+            << ": " << c << " | " << #d << ": " << d << ::std::endl;
+#define trace5(a, b, c, d, e)                                                  \
+  std::cerr << #a << ": " << a << " | " << #b << ": " << b << " | " << #c      \
+            << ": " << c << " | " << #d << ": " << d << " | " << #e << ": "    \
+            << e << ::std::endl;
+#
 
 /* CONSTANTS */
 const int INF = 1e9 + 9;
 
 inline int right_shift(int x, int &i) {
-  // x = x >> i;
-  return (x = x >> i);
+  x = x >> i;
+  return x;
 }
 
 struct vertex {
@@ -42,18 +63,17 @@ struct vertex {
   int extra_dist;
   vector<pair<int, int>> adjList;
   // constructor
-  vertex(int id, int dist, int extra_dist)
-      : id(id), dist(dist), extra_dist(extra_dist) {}
-  // copy constructor
-  vertex(const vertex &obj) {
-    this->id = obj.get_id();
-    this->dist = obj.get_dis();
-    this->adjList = obj.adjList;
-  }
+  vertex(int x, int y , int z)
+      : id(x), dist(y), extra_dist(z) {}
   // insert an edge u--->v with a weight d
   void insert_edge(int &v, int &d) {
     this->adjList.push_back(make_pair(v, d));
     return;
+  }
+
+  // Prints vertex
+  void print() {
+    trace3(id, dist, extra_dist);
   }
 
   // Get the value of dist
@@ -66,102 +86,165 @@ struct vertex {
   int get_extra_dist() const { return this->extra_dist; }
 };
 
-// Comparator
-struct compareVertex {
-  bool operator()(vertex const &l, vertex const &r) { return l.dist < r.dist; }
+// Comparators
+struct compareVertexDist {
+  bool operator()(vertex const &l, vertex const &r) { return l.dist > r.dist; }
 };
 
-/* GRAPH */
-vector<vertex> graph;
+struct compareVertexExtraDist {
+  bool operator()(vertex const &l, vertex const &r) { return l.extra_dist > r.extra_dist; }
+};
 
-void Gabow_SSSP(int src, int &vertices, int &max_weight) {
+
+/* GRAPH */
+vector<vertex>* construct_graph(int &edges, int &vertices, int &max_weight) {
+  vector<vertex> *graph = new vector<vertex>;
+  graph->resize(vertices,
+                vertex(0, 0, 0)); // this'll work even if vertices start from 1
+  for (int i = 0; i < vertices; ++i) {
+    graph->at(i).id = i;
+  }
+  for (int i = 0; i < edges; ++i) {
+    int u;
+    int v;
+    int d;
+    std::cin >> u >> v >> d;
+    max_weight = max(max_weight, d);
+    if(u >= vertices or v >=vertices) {
+      continue;
+    }
+    //trace2(u, v);
+    graph->at(u).insert_edge(v, d);
+  }
+  return graph;
+}
+
+void print_graph(vector<vertex> *graph) {
+  for (auto &v : *(graph)) {
+    v.print();
+  }
+}
+
+void Gabow_SSSP(int &src, int &vertices, int &max_weight, vector<vertex>* graph_poi) {
+  vector<vertex> graph = *graph_poi;
   for (int i = 0; i < vertices; ++i) {
     graph[i].dist = INF;
   }
-  priority_queue<vertex, vector<vertex>, compareVertex>
+  priority_queue<vertex, vector<vertex>, compareVertexDist>
       pq;                                // priority queue (priority = min heap)
+  /*// Debug priority queue behaviour*/
+  //for (int i = 0; i < 5; ++i) {
+    //vertex temp(i, i*i, 0);
+    //pq.push(temp);
+  //}
+  //pq.push(vertex(6, -1, 0));
+  //pq.push(vertex(7, 2, 0));
+  //pq.push(vertex(8, 5, 0));
+  //for (int i = 0; i < 8; ++i) {
+  //std::cout << pq.top().get_dis() << " id : "<< pq.top().get_id() << std::endl;
+    //pq.pop();
+  /*}*/
   int max_iterations = log2(max_weight); // Length of bitset of largest weight
+  //max_iterations++;
+  using namespace std::chrono_literals;
+  std::this_thread::sleep_for(6s);
+  trace2(max_weight, max_iterations);
   graph[src].dist = 0;
   pq.push(graph[src]);
+  //print_graph();
   // First iteration with all zero weights
   while (!pq.empty()) {
     vertex u = pq.top();
     int u_id = u.get_id();
     int u_dis = graph[u_id].get_dis();
+    // trace2(u_id, u_dis);
     pq.pop();
-    for (auto pai : graph[u_id].adjList) {
+    for (auto &pai : graph[u_id].adjList) {
       int v = pai.first;
       int edge_weight = pai.second; // edge_weigth(u, v)
       int v_dis = graph[v].get_dis();
       int wi = right_shift(edge_weight, max_iterations);
+      //trace3(v, edge_weight, wi);
       if (v_dis > u_dis + wi) {
         graph[v].dist = u_dis + wi;
         pq.push(graph[v]);
       }
     }
   }
+  //print_graph();
   // Rest
-  while (max_iterations) {
+  while (max_iterations > 0) {
     max_iterations--;
-    for (auto v : graph) {
-      v.extra_dist = INF;
+    std::cerr << "------------------------------------------iteration = " << max_iterations << std::endl;
+    for (int i = 0; i < vertices; ++i) {
+      graph[i].extra_dist = INF;
     }
+    priority_queue<vertex, vector<vertex>, compareVertexExtraDist> pq2;
     graph[src].extra_dist = 0;
-    pq.push(graph[src]);
-    while (!pq.empty()) {
-      vertex u = pq.top();
-      pq.pop();
+    //trace2(src, graph[src].extra_dist);
+    pq2.push(graph[src]);
+    while (!pq2.empty()) {
+      vertex u = pq2.top();
+      pq2.pop();
       int u_id = u.get_id();
       int u_dis = u.get_dis();
       int u_extra_dist = u.get_extra_dist();
-      for (auto pai : graph[u_id].adjList) {
+      //trace3(u.id, u.dist, u.extra_dist);
+      //trace3(u_id, u_dis, u_extra_dist);
+      for (auto &pai : graph[u_id].adjList) {
         int v = pai.first;
         int edge_weight = pai.second; // edge_weigth(u, v)
         int v_dis = graph[v].get_dis();
         int v_extra_dist = graph[v].get_extra_dist();
-        int Ii = right_shift(edge_weight, max_iterations) +
+        int Li = right_shift(edge_weight, max_iterations) +
                  2 * (u_dis - v_dis); // refined weight+ potentiol across it
-        if (v_extra_dist > u_extra_dist + Ii) {
-          graph[v].extra_dist = u_extra_dist + Ii;
-          pq.push(graph[v]);
+        //trace3(v, v_extra_dist, Li);
+        if (v_extra_dist > u_extra_dist + Li) {
+          graph[v].extra_dist = u_extra_dist + Li;
+          pq2.push(graph[v]);
         }
       }
     }
-    for (auto v : graph) {
+    for (auto &v : graph) {
       if (v.get_dis() < INF) {
         v.dist = 2 * v.get_dis() + v.get_extra_dist();
+        //trace2(v.get_id(), v.dist);
       }
     }
   }
+  // Print Distance
+  for (auto &v : graph) {
+    std::cout << "Distace from " << src << " to " << v.get_id() << " = "
+              << v.dist << ::std::endl;
+  }
+
 }
 
 int main() {
-  /**
-    Code goes here
-  */
+/**
+  Code goes here
+*/
+#ifdef LOCAL_DEFINE
+  freopen("WikiTalk_gabow.txt", "rt", stdin);
+  freopen("output.txt","w",stdout);
+#endif
+
   int vertices; // vertices
   int edges;    // edges
   int max_weight = -1;
   std::cin >> vertices >> edges;
-  graph.resize(vertices + 1,
-               vertex(0, 0, 0)); // this'll work even if vertices start from 1
-  for (int i = 0; i < vertices; ++i) {
-    graph[i].id = i;
-  }
-  for (int i = 0; i < edges; ++i) {
-    int u;
-    int v;
-    int d;
-    max_weight = max(max_weight, d);
-    std::cin >> u >> v >> d;
-    graph[u].insert_edge(v, d);
-  }
+  // constructs graph
+  vector<vertex>* graph = construct_graph(edges, vertices, max_weight);
+  trace3(vertices, edges, max_weight);
+  auto start = steady_clock::now();
   int src = 0;
-  Gabow_SSSP(src, vertices, max_weight);
-  // Print Distance
-  for (auto v : graph) {
-    std::cout << "Distace from " << src << " to " << v.get_id() << " = "
-              << v.get_dis() << ::std::endl;
-  }
+  thread t(Gabow_SSSP, ref(src), ref(vertices), ref(max_weight), graph);
+  t.join();
+  auto end = steady_clock::now();
+#ifdef LOCAL_DEFINE
+  ::std::cerr << "Time elapsed: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+  // cin>>t;
+#endif
+
   return 0;
 }
